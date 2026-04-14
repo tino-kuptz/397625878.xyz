@@ -1,144 +1,75 @@
-# tools.kup.tz Request Logger Worker
+# 397625878.xyz request logger
 
-> [!IMPORTANT]  
-> Even though this is a standalone worker, it shares a database with [tools.kup.tz](https://github.com/tino-kuptz/tools.kup.tz) in prod
-> The scheme in this project was imported into the prod database of tools.kup.tz, too, so in case you want to setup both combined together you need to import it in tools.kup.tz, too.
-
-A Cloudflare Worker that logs all requests to any subdomain under `397625878.xyz` (and localhost for testing) to a D1 database.
+A small Node.js HTTP server that records every request in PostgreSQL.
 
 ## Features
 
-- Logs requests to all subdomains under `397625878.xyz`
-- Strips Cloudflare-specific headers before logging
-- Records host, headers, body, timestamp, IP address, method, URL, and user agent
-- Logs the real connecting IP address
-- Supports localhost for testing
-- Automatic cleanup of old records (older than 3 days) via daily cron job
-
-## Setup
-
-## In Cloudflare
-For this worker to work you need to setup a wildcard record with cf proxying enabled.
-
-<img src="readme/cf-dns-record.png"></img>
-
-Otherwise your worker wont receive the requests.
-
-### Initial setup
-
-```bash
-npm install
-npm run db:create
-```
-
-This will create a new D1 database and output the database ID. Copy this ID and update the `database_id` in `wrangler.toml`.
-
-### Setup local or remote db
-
-```bash
-# Setup local database
-npm run db:migrate:dev
-# Setup prod database
-npm run db:migrate:prod
-```
-
-## Development
-
-### Local Development
-
-Quick start after cloning this repo
-```bash
-npm install
-npm run db:create
-# Replace the uuid in wrangler.jsonc
-npm run db:migrate:dev
-npm run dev
-```
-
-This will start a local development server that responds to `*.localhost` requests.
-
-### Database Shell
-
-```bash
-npm run db:shell
-```
-
-## Database Schema
-
-The worker logs the following data to the `http_request_logs` table:
-
-- `id`: Auto-incrementing primary key
-- `host`: The subdomain (e.g., "demo01", "localhost")
-- `headers`: JSON string of HTTP headers (Cloudflare headers stripped)
-- `body`: Raw request body
-- `timestamp`: ISO timestamp of the request
-- `ip`: Real IP address of the client
-- `method`: HTTP method (GET, POST, etc.)
-- `url`: Full request URL
-- `user_agent`: User agent string
-- `created_at`: Database insertion timestamp
-
-## Usage Examples
-
-```sh
-# Test with a subdomain
-curl -X POST "https://demo01.397625878.xyz/test" \
-  -H "Content-Type: application/json" \
-  -d '{"test": "data"}'
-
-# Test with localhost (development)
-curl -X GET "http://demo01.localhost:8787/test" \
-  -H "Custom-Header: test-value"
-```
-
-## Project Structure
-
-The codebase is organized into modular utilities:
-
-- `src/utils/headers.js` - Header manipulation (stripping Cloudflare headers, IP extraction)
-- `src/utils/cloudflare.js` - Cloudflare-specific utilities (subdomain extraction, request processing)
-- `src/utils/database.js` - Database wrapper with methods for logging, querying, and cleanup
+- Accepts only hosts matching `<uuid>.${BASE_DOMAIN}` (RFC 4122 UUID); the `host` column stores **only** the UUID
+- Logs headers (proxy-forwarding headers omitted from the stored JSON; IP is stored separately), body, request time, client IP, method, URL, and user agent
+- Client IP from `X-Forwarded-For` / `X-Real-IP` when present, otherwise the socket address
+- CORS headers on responses (same behavior as the previous worker)
+- Loads `.env` automatically via [dotenv](https://github.com/motdotla/dotenv) (variables already set in the shell still win)
 
 ## Configuration
 
-### Environment Variables
+PostgreSQL is read from environment variables (including those in `.env`):
 
-The worker uses the following environment configuration in `wrangler.jsonc`:
+| Variable | Example |
+|----------|---------|
+| `POSTGRES_HOST` | `localhost` |
+| `POSTGRES_PORT` | `5432` |
+| `POSTGRES_USER` | `postgres_user` |
+| `POSTGRES_PASSWORD` | `postgres_pass` |
+| `POSTGRES_DB` | `postgres_db` |
+| `BASE_DOMAIN` | `397625878.xyz` | Requests must use `Host: <uuid>.<BASE_DOMAIN>` (port allowed in `Host`) |
 
-- `DB`: D1 database binding for storing logs
-- Production routes: `*.397625878.xyz/*`
-- Development routes: `*.localhost/*`
+Optional:
 
-### Customization
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8787` | HTTP listen port |
 
-You can modify the worker behavior by editing the utility files:
+## Run
 
-- `src/utils/headers.js` - Change header processing logic
-- `src/utils/cloudflare.js` - Modify subdomain extraction or request data preparation
-- `src/utils/database.js` - Add new database queries, modify logging behavior, or change cleanup retention period
-- `src/index.js` - Change the main request flow, response format, or scheduled tasks
+```bash
+npm install
+cp .env.example .env
+# edit .env with your credentials
+npm start
+```
 
-### Scheduled Tasks
+You can still use plain `export` / systemd / Docker env instead of `.env`; the server does not require a `.env` file.
 
-The worker includes a scheduled function that runs daily at midnight UTC:
+Development with auto-restart on file changes:
 
-- **Automatic Cleanup**: Deletes records older than 3 days to prevent database bloat
-- **Configurable**: Modify the retention period in `src/index.js` (currently set to 3 days)
-- **Logging**: All cleanup operations are logged to the console
+```bash
+npm run dev
+```
 
-## Security Notes
+## Database schema
 
-- The worker strips Cloudflare-specific headers
-- All requests are logged regardless of method or content
+See https://github.com/tino-kuptz/tools.kup.tz/blob/main/db.sql
 
-## Troubleshooting
+## Project layout
 
-### Common Issues
+- `src/index.js` — HTTP server
+- `src/utils/database.js` — PostgreSQL pool and insert
+- `src/utils/request.js` — body read, URL build, row shaping
+- `src/utils/headers.js` — IP resolution and header filtering for logs
 
-1. **Database not found**: Ensure you've created the D1 database and updated the ID in `wrangler.jsonc`
-2. **Migration errors**: Run `npm run db:migrate` to apply the schema
-3. **Deployment failures**: Check that your Cloudflare account has Workers and D1 enabled
+## Usage examples
 
-### Logs
+With `BASE_DOMAIN=localhost` in `.env`:
 
-Check the Cloudflare Workers dashboard for runtime logs and errors.
+```sh
+curl -X POST "http://550e8400-e29b-41d4-a716-446655440000.localhost:8787/test" \
+  -H "Content-Type: application/json" \
+  -d '{"test": "data"}'
+```
+
+Put the app behind a reverse proxy that sets `X-Forwarded-For` / `X-Forwarded-Proto` if you terminate TLS in front of it.
+
+## Security notes
+
+- Every request path and body is persisted; do not expose the database broadly.
+- Tune body size in `src/utils/request.js` if you need a different limit.

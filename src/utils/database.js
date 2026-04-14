@@ -1,136 +1,58 @@
+import pg from 'pg';
+
 /**
- * Database wrapper for D1 operations
+ * @returns {pg.Pool}
  */
-export class DatabaseWrapper {
-  constructor(db) {
-    this.db = db;
+export function createPool() {
+  const {
+    POSTGRES_HOST,
+    POSTGRES_PORT,
+    POSTGRES_USER,
+    POSTGRES_PASSWORD,
+    POSTGRES_DB,
+  } = process.env;
+
+  if (!POSTGRES_HOST || !POSTGRES_USER || !POSTGRES_PASSWORD || !POSTGRES_DB) {
+    throw new Error(
+      'Missing PostgreSQL env: POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB are required',
+    );
   }
 
-  /**
-   * Logs a request to the database
-   * @param {Object} requestData - The request data to log
-   * @returns {Promise<boolean>} - Success status
-   */
-  async logRequest(requestData) {
-    try {
-      const stmt = this.db.prepare(`
-        INSERT INTO http_request_logs (host, headers, body, timestamp, ip, method, url, user_agent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      
-      await stmt.bind(
-        requestData.host,
-        requestData.headers,
-        requestData.body,
-        requestData.timestamp,
-        requestData.ip,
-        requestData.method,
-        requestData.url,
-        requestData.user_agent
-      ).run();
-      
-      console.log(`Successfully logged request for subdomain: ${requestData.host}`);
-      return true;
-      
-    } catch (error) {
-      console.error('Error logging to database:', error);
-      return false;
-    }
-  }
+  return new pg.Pool({
+    host: POSTGRES_HOST,
+    port: Number(POSTGRES_PORT || 5432),
+    user: POSTGRES_USER,
+    password: POSTGRES_PASSWORD,
+    database: POSTGRES_DB,
+  });
+}
 
-  /**
-   * Gets recent requests
-   * @param {number} limit - Number of records to return
-   * @returns {Promise<Array>} - Array of recent requests
-   */
-  async getRecentRequests(limit = 10) {
-    try {
-      const stmt = this.db.prepare(`
-        SELECT host, ip, method, timestamp, url 
-        FROM http_request_logs 
-        ORDER BY timestamp DESC 
-        LIMIT ?
-      `);
-      
-      const result = await stmt.bind(limit).all();
-      return result.results;
-      
-    } catch (error) {
-      console.error('Error fetching recent requests:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Gets requests by subdomain
-   * @param {string} subdomain - The subdomain to filter by
-   * @param {number} limit - Number of records to return
-   * @returns {Promise<Array>} - Array of requests for the subdomain
-   */
-  async getRequestsBySubdomain(subdomain, limit = 50) {
-    try {
-      const stmt = this.db.prepare(`
-        SELECT * FROM http_request_logs 
-        WHERE host = ? 
-        ORDER BY timestamp DESC 
-        LIMIT ?
-      `);
-      
-      const result = await stmt.bind(subdomain, limit).all();
-      return result.results;
-      
-    } catch (error) {
-      console.error('Error fetching requests by subdomain:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Gets requests by IP address
-   * @param {string} ip - The IP address to filter by
-   * @param {number} limit - Number of records to return
-   * @returns {Promise<Array>} - Array of requests from the IP
-   */
-  async getRequestsByIp(ip, limit = 50) {
-    try {
-      const stmt = this.db.prepare(`
-        SELECT * FROM http_request_logs 
-        WHERE ip = ? 
-        ORDER BY timestamp DESC 
-        LIMIT ?
-      `);
-      
-      const result = await stmt.bind(ip, limit).all();
-      return result.results;
-      
-    } catch (error) {
-      console.error('Error fetching requests by IP:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Deletes records older than specified days
-   * @param {number} days - Number of days to keep records
-   * @returns {Promise<number>} - Number of records deleted
-   */
-  async cleanupOldRecords(days) {
-    try {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - days);
-      const cutoffTimestamp = cutoffDate.toISOString();
-      
-      const stmt = this.db.prepare(`
-        DELETE FROM http_request_logs 
-        WHERE timestamp < ?
-      `);
-      
-      const result = await stmt.bind(cutoffTimestamp).run();
-      return result.meta.changes || 0;
-      
-    } catch (error) {
-      console.error('Error cleaning up old records:', error);
-      return 0;
-    }
-  }
+/**
+ * @param {pg.Pool} pool
+ * @param {{
+ *   host: string;
+ *   headers: string;
+ *   body: string;
+ *   logged_at: Date;
+ *   ip: string;
+ *   method: string;
+ *   url: string;
+ *   user_agent: string | null;
+ * }} row
+ */
+export async function logRequest(pool, row) {
+  await pool.query(
+    `INSERT INTO http_request_logs (host, headers, body, logged_at, ip, method, url, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      row.host,
+      row.headers,
+      row.body,
+      row.logged_at,
+      row.ip,
+      row.method,
+      row.url,
+      row.user_agent,
+    ],
+  );
 }
