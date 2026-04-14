@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log*
+.npm
+.git
+.github
+.env
+.env.*
+README.md
+agent-transcripts
+mcps

@@ -11,8 +11,6 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
-# Cloudflare Worker
-.wrangler/
 dist/
 
 # Logs

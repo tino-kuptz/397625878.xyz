@@ -1,24 +1,19 @@
 {
   "name": "397625878-xyz",
   "version": "1.0.0",
-  "description": "Cloudflare Worker for logging requests to all subdomains under 397625878.xyz",
+  "description": "HTTP server that logs every request to PostgreSQL",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "dev": "npx wrangler dev",
-    "deploy": "npx wrangler deploy -e production",
-    "db:create": "npx wrangler d1 create tools-kup-tz",
-    "db:migrate:dev": "npx wrangler d1 execute tools-kup-tz --local --file=./schema.sql",
-    "db:migrate:prod": "npx wrangler d1 execute tools-kup-tz --file=./schema.sql",
-    "db:list": "npx wrangler d1 execute tools-kup-tz --local --command=\"SELECT * FROM http_request_logs ORDER BY timestamp DESC LIMIT 10\""
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
   },
-  "devDependencies": {
-    "wrangler": "^4.31.0"
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "pg": "^8.14.1"
   },
   "keywords": [
-    "cloudflare",
-    "worker",
-    "d1",
+    "postgres",
     "request-logging"
   ],
   "author": "Tino Kuptz <tino@kup.tz>",
