@@ -12,6 +12,18 @@ A small Node.js HTTP server that records every request in PostgreSQL.
 
 ## Configuration
 
+### Cloudflare
+
+In Cloudflare setup a tunnel, and fetch it's uuid.  
+Configure a wildcard application route to this container (in this case `*.397625878.xyz` -> `http://internal-container-name:8787`).  
+As wildcard routes do not generate a dns record in Cloudflare, create the wildcard record manually pointing to `<tunnel-uuid>.cfargotunnel.com`
+
+<img src="readme/tunnel-uuid.png" style="width: 30%;" /> <img src="readme/tunnel-config.png" style="width: 30%;" /> <img src="readme/dns.png" style="width: 30%;" /> 
+
+Afterwards all requests going to <code>*.397625878.xyz</code> will be routed through your tunnel to your local container.
+
+### Container
+
 PostgreSQL is read from environment variables (including those in `.env`):
 
 | Variable | Example |
